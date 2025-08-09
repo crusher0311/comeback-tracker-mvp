@@ -1,0 +1,18 @@
+# Node / build
+node_modules/
+**/node_modules/
+dist/
+build/
+.vite/
+*.log
+
+# Env & local config
+.env
+**/.env
+.env.local
+**/.env.local
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
