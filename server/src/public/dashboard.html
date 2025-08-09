@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Comeback Tracker — Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; color: #111; }
+    h1 { margin: 0 0 16px; }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+    .col-6 { grid-column: span 6; }
+    .col-12 { grid-column: span 12; }
+    .kpis { display: flex; gap: 12px; }
+    .kpi { flex: 1; background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:12px; }
+    label { font-size: 12px; color:#374151; display:block; margin-bottom:4px; }
+    input, select, button { padding:8px; border:1px solid #d1d5db; border-radius:8px; width:100%; }
+    .filters { display:grid; grid-template-columns: repeat(6, 1fr); gap:12px; margin: 8px 0 16px; }
+    table { width:100%; border-collapse: collapse; font-size: 14px; }
+    th, td { border-bottom:1px solid #eee; padding:8px; text-align:left; }
+    .row { display:flex; gap:12px; align-items:center; }
+    .right { margin-left:auto; }
+    a.button { text-decoration:none; display:inline-block; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; background:#111; color:#fff; }
+    .muted { color:#6b7280; font-size:12px; }
+  </style>
+</head>
+<body>
+  <h1>Comeback Tracker — Dashboard</h1>
+
+  <div class="filters card">
+    <div>
+      <label>Type</label>
+      <select id="type">
+        <option value="">(any)</option>
+        <option>workmanship</option>
+        <option>misdiagnosis</option>
+        <option>parts_failure</option>
+        <option>customer_declined_work</option>
+        <option>new_issue</option>
+      </select>
+    </div>
+    <div>
+      <label>Status</label>
+      <select id="status">
+        <option value="">(any)</option>
+        <option>open</option>
+        <option>in_progress</option>
+        <option>resolved</option>
+        <option>closed</option>
+      </select>
+    </div>
+    <div>
+      <label>Advisor contains</label>
+      <input id="advisor" placeholder="e.g. Sam">
+    </div>
+    <div>
+      <label>Location contains</label>
+      <input id="location" placeholder="e.g. HCAC Evanston">
+    </div>
+    <div>
+      <label>From (date)</label>
+      <input type="date" id="from">
+    </div>
+    <div>
+      <label>To (date)</label>
+      <input type="date" id="to">
+    </div>
+    <div class="row" style="grid-column: 1 / -1; margin-top:4px;">
+      <button id="apply">Apply Filters</button>
+      <a id="exportCsv" class="button right" href="#">Export CSV</a>
+    </div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi">
+      <div class="muted">Total Comebacks</div>
+      <div id="kpiTotal" style="font-size:24px; font-weight:700;">—</div>
+    </div>
+    <div class="kpi">
+      <div class="muted">Open</div>
+      <div id="kpiOpen" style="font-size:24px; font-weight:700;">—</div>
+    </div>
+    <div class="kpi">
+      <div class="muted">Resolved</div>
+      <div id="kpiResolved" style="font-size:24px; font-weight:700;">—</div>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:16px;">
+    <div class="card col-6">
+      <canvas id="byType"></canvas>
+    </div>
+    <div class="card col-6">
+      <canvas id="byStatus"></canvas>
+    </div>
+    <div class="card col-12">
+      <canvas id="byDay"></canvas>
+    </div>
+    <div class="card col-12">
+      <div class="row" style="margin-bottom:8px;">
+        <div class="row" style="gap:8px;">
+          <label class="muted">Rows per page</label>
+          <select id="limit" style="width:auto;">
+            <option>10</option>
+            <option selected>20</option>
+            <option>50</option>
+            <option>100</option>
+          </select>
+        </div>
+        <div class="right row" style="gap:8px;">
+          <button id="prev">Prev</button>
+          <div id="pageInfo" class="muted"></div>
+          <button id="next">Next</button>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>RO</th><th>Customer</th><th>Advisor</th><th>Location</th>
+            <th>Type</th><th>Status</th><th>Comeback</th><th>Orig Repair</th>
+            <th>Parts$</th><th>Labor$</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const API = '';
+    let page = 1;
+
+    const els = {
+      type: document.getElementById('type'),
+      status: document.getElementById('status'),
+      advisor: document.getElementById('advisor'),
+      location: document.getElementById('location'),
+      from: document.getElementById('from'),
+      to: document.getElementById('to'),
+      apply: document.getElementById('apply'),
+      exportCsv: document.getElementById('exportCsv'),
+      kpiTotal: document.getElementById('kpiTotal'),
+      kpiOpen: document.getElementById('kpiOpen'),
+      kpiResolved: document.getElementById('kpiResolved'),
+      byType: document.getElementById('byType'),
+      byStatus: document.getElementById('byStatus'),
+      byDay: document.getElementById('byDay'),
+      limit: document.getElementById('limit'),
+      prev: document.getElementById('prev'),
+      next: document.getElementById('next'),
+      pageInfo: document.getElementById('pageInfo'),
+      tbody: document.getElementById('tbody'),
+    };
+
+    const charts = { byType: null, byStatus: null, byDay: null };
+
+    function qs() {
+      const p = new URLSearchParams();
+      if (els.type.value) p.set('type', els.type.value);
+      if (els.status.value) p.set('status', els.status.value);
+      if (els.advisor.value) p.set('advisor', els.advisor.value);
+      if (els.location.value) p.set('location', els.location.value);
+      if (els.from.value) p.set('from', els.from.value);
+      if (els.to.value) p.set('to', els.to.value);
+      return p.toString();
+    }
+
+    function setExportLink() {
+      const params = new URLSearchParams();
+      const q = qs();
+      if (q) q.split('&').forEach(kv => {
+        const [k, v] = kv.split('=');
+        params.set(k, decodeURIComponent(v));
+      });
+      params.set('fields', [
+        'roNumber','customerName','vehicle.make','vehicle.model','vehicle.year','vehicle.vin',
+        'dateOriginalRepair','dateOfComeback','type','resolution.status',
+        'advisor','location','financial.partsCost','financial.laborCost','financial.warrantyOrDiscount',
+        '_id','createdAt'
+      ].join(','));
+      params.set('limit', '5000');
+      els.exportCsv.href = `/comebacks/export.csv?${params.toString()}`;
+    }
+
+    async function fetchJSON(url) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+
+    function upsertChart(ref, cfg) {
+      if (charts[ref]) charts[ref].destroy();
+      charts[ref] = new Chart(els[ref], cfg);
+    }
+
+    async function loadSummary() {
+      const q = qs();
+      const data = await fetchJSON(`/comebacks/summary${q ? '?' + q : ''}`);
+
+      // KPIs
+      els.kpiTotal.textContent = data.total ?? 0;
+      const open = data.byStatus.find(s => s.status === 'open')?.count || 0;
+      const resolved = data.byStatus.find(s => s.status === 'resolved')?.count || 0;
+      els.kpiOpen.textContent = open;
+      els.kpiResolved.textContent = resolved;
+
+      // Charts
+      const typeLabels = data.byType.map(t => t.type);
+      const typeCounts = data.byType.map(t => t.count);
+      upsertChart('byType', {
+        type: 'bar',
+        data: { labels: typeLabels, datasets: [{ label: 'By Type', data: typeCounts }] },
+        options: { responsive: true, plugins: { legend: { display: false } } }
+      });
+
+      const statusLabels = data.byStatus.map(s => s.status);
+      const statusCounts = data.byStatus.map(s => s.count);
+      upsertChart('byStatus', {
+        type: 'bar',
+        data: { labels: statusLabels, datasets: [{ label: 'By Status', data: statusCounts }] },
+        options: { responsive: true, plugins: { legend: { display: false } } }
+      });
+
+      const dayLabels = data.byDay.map(d => d.date);
+      const dayCounts = data.byDay.map(d => d.count);
+      upsertChart('byDay', {
+        type: 'line',
+        data: { labels: dayLabels, datasets: [{ label: 'Daily', data: dayCounts, tension: 0.3 }] },
+        options: { responsive: true, plugins: { legend: { display: false } } }
+      });
+    }
+
+    async function loadTable() {
+      const p = new URLSearchParams(qs());
+      p.set('page', String(page));
+      p.set('limit', els.limit.value);
+      const data = await fetchJSON(`/comebacks?${p.toString()}`);
+
+      els.pageInfo.textContent = `Page ${data.page} of ${data.pages} • Total ${data.total}`;
+      els.prev.disabled = data.page <= 1;
+      els.next.disabled = data.page >= data.pages;
+
+      const rows = (data.items || []).map(r => {
+        const get = (obj, path) => path.split('.').reduce((o,k)=> (o && o[k] !== undefined) ? o[k] : '', obj);
+        const td = s => `<td>${s ?? ''}</td>`;
+        return `<tr>
+          ${td(r.roNumber)}${td(r.customerName)}${td(r.advisor)}${td(r.location)}
+          ${td(r.type)}${td(get(r,'resolution.status'))}
+          ${td((r.dateOfComeback||'').slice(0,10))}${td((r.dateOriginalRepair||'').slice(0,10))}
+          ${td(get(r,'financial.partsCost'))}${td(get(r,'financial.laborCost'))}
+        </tr>`;
+      }).join('');
+
+      els.tbody.innerHTML = rows || `<tr><td colspan="10" class="muted">No records</td></tr>`;
+    }
+
+    function applyFilters() {
+      page = 1;
+      setExportLink();
+      Promise.all([loadSummary(), loadTable()]).catch(err => alert(err.message));
+    }
+
+    els.apply.addEventListener('click', applyFilters);
+    els.prev.addEventListener('click', () => { if (page > 1) { page--; loadTable(); } });
+    els.next.addEventListener('click', () => { page++; loadTable(); });
+    els.limit.addEventListener('change', () => { page = 1; loadTable(); });
+
+    // first load
+    setExportLink();
+    applyFilters();
+  </script>
+</body>
+</html>
